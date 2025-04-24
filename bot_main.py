@@ -144,6 +144,8 @@ def proximos(update, context):
 # Início do bot
 updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
 dispatcher = updater.dispatcher
+
+# Handlers de comando
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CommandHandler("ajuda", ajuda))
 dispatcher.add_handler(CommandHandler("jogos", jogos))
@@ -151,6 +153,8 @@ dispatcher.add_handler(CommandHandler("config", config))
 dispatcher.add_handler(CommandHandler("tendencias", tendencias))
 dispatcher.add_handler(CommandHandler("proximos", proximos))
 
+# Inicia o bot
 updater.start_polling()
 print("🤖 Bot ouvindo todos os comandos...")
 updater.idle()
+
