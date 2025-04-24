@@ -141,20 +141,23 @@ def proximos(update, context):
         mensagem = "❌ Nenhum jogo encontrado para as próximas 3 horas."
     context.bot.send_message(chat_id=update.effective_chat.id, text=mensagem, parse_mode=telegram.ParseMode.MARKDOWN)
 
-# Início do bot
-updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+try:
+    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
 
-# Handlers de comando
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("ajuda", ajuda))
-dispatcher.add_handler(CommandHandler("jogos", jogos))
-dispatcher.add_handler(CommandHandler("config", config))
-dispatcher.add_handler(CommandHandler("tendencias", tendencias))
-dispatcher.add_handler(CommandHandler("proximos", proximos))
+    # Handlers
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("ajuda", ajuda))
+    dispatcher.add_handler(CommandHandler("jogos", jogos))
+    dispatcher.add_handler(CommandHandler("tendencias", tendencias))
+    dispatcher.add_handler(CommandHandler("proximos", proximos))
+    dispatcher.add_handler(CommandHandler("config", config))
 
-# Inicia o bot
-updater.start_polling()
-print("🤖 Bot ouvindo todos os comandos...")
-updater.idle()
+    updater.start_polling()
+    print("🤖 Bot ouvindo todos os comandos...")
+    updater.idle()
+
+except Exception as e:
+    print("❌ ERRO AO INICIAR O BOT:", e)
+
 
