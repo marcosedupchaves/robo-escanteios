@@ -1,34 +1,52 @@
-# Robô de Alertas de Escanteios no Telegram
+# 🤖 Bot de Monitoramento de Jogos ao Vivo - Telegram
 
-Este projeto envia alertas de escanteios no Telegram para partidas ao vivo que atendam critérios específicos.
+Este bot permite consultar e monitorar jogos de futebol ao vivo com comandos no Telegram.
 
-## ✅ Requisitos
+---
 
-- Python 3.12 instalado
-- Biblioteca `pip`
-- Conta no [API-Football](https://dashboard.api-football.com/)
-- Bot do Telegram e seu Chat ID
+## ✅ Comandos Disponíveis
 
-## 🚀 Como Rodar Localmente
+| Comando       | Ação                                                                |
+|---------------|---------------------------------------------------------------------|
+| `/start`      | Mensagem de boas-vindas e menu de comandos                          |
+| `/ajuda`      | Mostra todos os comandos disponíveis                                |
+| `/jogos`      | Lista todos os jogos ao vivo no momento                             |
+| `/tendencias` | Mostra jogos ao vivo com alta tendência de escanteios (média ≥ 10)  |
+| `/proximos`   | Lista jogos que irão começar nas próximas 3 horas                   |
+| `/config`     | Mostra status da API-Football (uso diário, plano, etc)              |
 
-1. Instale as dependências:
+---
+
+## ⚙️ Como configurar no Replit
+
+1. Suba todos os arquivos no seu projeto do Replit
+2. Vá no painel lateral e clique em **Tools → Configuration**
+3. No campo **Run Command**, insira:
+
 ```bash
-pip install -r requirements.txt
+python3 bot_main.py
 ```
 
-2. Crie um arquivo `.env` baseado no `.env.example` com suas credenciais.
+4. Clique em **Save**
+5. Clique no botão **Run**
 
-3. Execute o robô:
-```bash
-python main.py
-```
+---
 
-## ☁️ Como Subir para a Railway (nuvem)
+## 🔐 Variáveis Necessárias
 
-1. Crie uma conta em https://railway.app
-2. Crie um novo projeto e conecte este código (suba para GitHub ou envie os arquivos)
-3. Adicione as variáveis de ambiente no painel da Railway (baseadas no `.env`)
-4. Configure o comando de execução:
-```bash
-python main.py
-```
+Adicione as seguintes variáveis em **"Secrets"** (ícone de 🔑 no topo ou lateral):
+
+- `API_FOOTBALL_KEY` → sua chave da API-Football
+- `TELEGRAM_TOKEN` → token do seu bot no Telegram
+
+---
+
+## 📦 Arquivos incluídos
+
+- `bot_main.py` → Bot com todos os comandos
+- `.replit` → (usado para execução automática com python3)
+- `README.md` → Este guia
+
+---
+
+Desenvolvido com 💙 para ajudar você a monitorar futebol e apostas em tempo real.
