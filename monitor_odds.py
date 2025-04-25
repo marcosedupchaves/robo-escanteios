@@ -16,10 +16,7 @@ def get_odds():
     jogos_ao_vivo = resp_live.json().get("response", [])
 
     # Buscar próximos jogos (dentro de 3h)
-    resp_prox = requests.get(
-        f"https://v3.football.api-sports.io/fixtures?date={agora.date()}",
-        headers=headers
-    )
+    resp_prox = requests.get(f"https://v3.football.api-sports.io/fixtures?date={agora.date()}", headers=headers)
     jogos_proximos = [
         j for j in resp_prox.json().get("response", [])
         if agora <= datetime.fromisoformat(j['fixture']['date'][:-1]) <= daqui_3h
@@ -32,7 +29,6 @@ def get_odds():
         fixture_id = jogo["fixture"]["id"]
         times = f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}"
 
-        # Buscar odds do jogo
         odds_resp = requests.get(f"https://v3.football.api-sports.io/odds?fixture={fixture_id}", headers=headers)
         odds_data = odds_resp.json().get("response", [])
 
@@ -50,18 +46,14 @@ def get_odds():
         if not mercados:
             continue
 
-        odds_msg += f"⚽ *{times}*
-"
+        odds_msg += f"⚽ *{times}*\n"
         if "gols" in mercados:
             for v in mercados["gols"][:2]:
-                odds_msg += f"  • Gols {v['value']}: {v['odd']}
-"
+                odds_msg += f"  • Gols {v['value']}: {v['odd']}\n"
         if "escanteios" in mercados:
             for v in mercados["escanteios"][:2]:
-                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}
-"
-        odds_msg += "
-"
+                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}\n"
+        odds_msg += "\n"
 
     if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*":
         odds_msg += "Sem odds disponíveis no momento."
