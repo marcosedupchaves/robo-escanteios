@@ -62,7 +62,8 @@ def get_odds():
             for v in mercados["escanteios"][:2]:
                 odds_msg += f"  • Escanteios {v['value']}: {v['odd']}
 "
-        odds_msg += "\n"
+        odds_msg += "
+"
 
     if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*":
         odds_msg += "Sem odds disponíveis no momento."
