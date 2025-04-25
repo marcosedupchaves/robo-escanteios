@@ -28,7 +28,7 @@ def get_odds():
         "proximos": jogos_proximos
     }
 
-    oodds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
+    odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
 
 "
 
@@ -93,4 +93,3 @@ def get_odds():
 def odds_command(update: Update, context: CallbackContext):
     msg = get_odds()
     update.message.reply_text(msg, parse_mode="Markdown")
-
