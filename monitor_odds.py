@@ -26,9 +26,8 @@ def get_odds():
     ]
 
     todos_jogos = jogos_ao_vivo + jogos_proximos
-    odds_msg = "📊 *Odds de Gols e Escanteios:*
+    odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
 
-"
 
     for jogo in todos_jogos:
         fixture_id = jogo["fixture"]["id"]
