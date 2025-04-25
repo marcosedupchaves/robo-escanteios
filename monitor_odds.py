@@ -51,7 +51,7 @@ def get_odds():
         if not mercados:
             continue
 
-        odds_msg += f"⚽ *{times}*
+        odds_msg += f"⚽ *{times}*\n"
 "
         if "gols" in mercados:
             for v in mercados["gols"][:2]:
