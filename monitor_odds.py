@@ -28,9 +28,10 @@ def get_odds():
         "proximos": jogos_proximos
     }
 
-    odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
+    odds_msg = """📊 *Odds de Gols e Escanteios:*
 
-"    
+"""
+
     for categoria, jogos in todos_jogos.items():
         if categoria == "ao_vivo":
             odds_msg += "📺 *Jogos Ao Vivo:*
