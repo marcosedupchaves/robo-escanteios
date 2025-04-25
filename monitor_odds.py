@@ -28,7 +28,7 @@ def get_odds():
         "proximos": jogos_proximos
     }
 
-    odds_msg = "📊 *Odds de Gols e Escanteios:*
+    oodds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
 
 "
 
