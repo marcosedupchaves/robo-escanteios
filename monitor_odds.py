@@ -30,8 +30,7 @@ def get_odds():
 
     odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
 
-"
-
+"    
     for categoria, jogos in todos_jogos.items():
         if categoria == "ao_vivo":
             odds_msg += "📺 *Jogos Ao Vivo:*
