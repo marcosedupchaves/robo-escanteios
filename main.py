@@ -4,6 +4,7 @@ import telegram
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telegram.ext import Updater, CommandHandler
+from monitor_odds import odds_command
 
 load_dotenv()
 
@@ -152,6 +153,7 @@ try:
     dispatcher.add_handler(CommandHandler("tendencias", tendencias))
     dispatcher.add_handler(CommandHandler("proximos", proximos))
     dispatcher.add_handler(CommandHandler("config", config))
+    dispatcher.add_handler(CommandHandler("odds", odds_command))
 
     updater.start_polling()
     print("🤖 Bot ouvindo todos os comandos...")
