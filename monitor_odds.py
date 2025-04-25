@@ -28,22 +28,16 @@ def get_odds():
         "proximos": jogos_proximos
     }
 
-    odds_msg = """📊 *Odds de Gols e Escanteios:*
-
-"""
+    mensagens = ["📊 *Odds de Gols e Escanteios:*\n"]
 
     for categoria, jogos in todos_jogos.items():
         if categoria == "ao_vivo":
-            odds_msg += "📺 *Jogos Ao Vivo:*
-"
+            mensagens.append("📺 *Jogos Ao Vivo:*\n")
         else:
-            odds_msg += "⏳ *Jogos Próximos (até 3h):*
-"
+            mensagens.append("⏳ *Jogos Próximos (até 3h):*\n")
 
         if not jogos:
-            odds_msg += "_Nenhum jogo encontrado._
-
-"
+            mensagens.append("_Nenhum jogo encontrado._\n")
             continue
 
         for jogo in jogos:
@@ -71,24 +65,19 @@ def get_odds():
             if not mercados:
                 continue
 
-            odds_msg += f"🕒 {horario} - ⚽ *{times}*
-"
+            mensagem_jogo = f"🕒 {horario} - ⚽ *{times}*\n"
             if "gols" in mercados:
                 for v in mercados["gols"][:2]:
-                    odds_msg += f"  ⚽ Gols {v['value']}: {v['odd']}
-"
+                    mensagem_jogo += f"  ⚽ Gols {v['value']}: {v['odd']}\n"
             if "escanteios" in mercados:
                 for v in mercados["escanteios"][:2]:
-                    odds_msg += f"  🥅 Escanteios {v['value']}: {v['odd']}
-"
-            odds_msg += "\n"
+                    mensagem_jogo += f"  🥅 Escanteios {v['value']}: {v['odd']}\n"
+            mensagens.append(mensagem_jogo + "\n")
 
-    if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*
+    if len(mensagens) == 1:
+        mensagens.append("Sem odds disponíveis no momento.")
 
-":
-        odds_msg += "Sem odds disponíveis no momento."
-
-    return odds_msg
+    return "".join(mensagens)
 
 def odds_command(update: Update, context: CallbackContext):
     msg = get_odds()
