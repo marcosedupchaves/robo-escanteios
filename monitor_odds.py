@@ -26,8 +26,6 @@ def get_odds():
     todos_jogos = jogos_ao_vivo + jogos_proximos
     odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
 
-"
-
     for jogo in todos_jogos:
         fixture_id = jogo["fixture"]["id"]
         times = f"{jogo['teams']['home']['name']} x {jogo['teams']['away']['name']}"
@@ -52,19 +50,16 @@ def get_odds():
         if not mercados:
             continue
 
-        odds_msg += f"⚽ *{times}*
-"
+        odds_msg += f"⚽ *{times}*\n"
         if "gols" in mercados:
             for v in mercados["gols"][:2]:
-                odds_msg += f"  • Gols {v['value']}: {v['odd']}
-"
+                odds_msg += f"  • Gols {v['value']}: {v['odd']}\n"
         if "escanteios" in mercados:
             for v in mercados["escanteios"][:2]:
-                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}
-"
+                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}\n"
         odds_msg += "\n"
 
-    if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*":
+    if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*\n\n":
         odds_msg += "Sem odds disponíveis no momento."
 
     return odds_msg
