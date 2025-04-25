@@ -24,7 +24,9 @@ def get_odds():
             jogos_proximos.append(j)
 
     todos_jogos = jogos_ao_vivo + jogos_proximos
-    odds_msg = "📊 *Odds de Gols e Escanteios:*\n\n"
+    odds_msg = "📊 *Odds de Gols e Escanteios:*
+
+"
 
     for jogo in todos_jogos:
         fixture_id = jogo["fixture"]["id"]
@@ -37,23 +39,29 @@ def get_odds():
             continue
 
         mercados = {}
-        for mercado in odds_data[0]["bookmakers"][0]["bets"]:
-            nome = mercado["name"].lower()
-            if "total goals" in nome or "goals" in nome:
-                mercados["gols"] = mercado["values"]
-            elif "corners" in nome:
-                mercados["escanteios"] = mercado["values"]
+        for bookmaker in odds_data[0]["bookmakers"]:
+            for mercado in bookmaker["bets"]:
+                nome = mercado["name"].lower()
+                if "total goals" in nome or "goals" in nome:
+                    if "gols" not in mercados:
+                        mercados["gols"] = mercado["values"]
+                elif "corners" in nome:
+                    if "escanteios" not in mercados:
+                        mercados["escanteios"] = mercado["values"]
 
         if not mercados:
             continue
 
-        odds_msg += f"⚽ *{times}*\n"
+        odds_msg += f"⚽ *{times}*
+"
         if "gols" in mercados:
             for v in mercados["gols"][:2]:
-                odds_msg += f"  • Gols {v['value']}: {v['odd']}\n"
+                odds_msg += f"  • Gols {v['value']}: {v['odd']}
+"
         if "escanteios" in mercados:
             for v in mercados["escanteios"][:2]:
-                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}\n"
+                odds_msg += f"  • Escanteios {v['value']}: {v['odd']}
+"
         odds_msg += "\n"
 
     if odds_msg.strip() == "📊 *Odds de Gols e Escanteios:*":
