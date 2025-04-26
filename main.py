@@ -56,4 +56,3 @@ updater.start_polling()
 threading.Thread(target=enviar_odds_automaticamente, daemon=True).start()
 
 updater.idle()
-,
