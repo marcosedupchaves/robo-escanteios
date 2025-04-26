@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -11,7 +11,6 @@ from telegram.ext import (
 )
 
 # ─── Configuração ────────────────────────────────────────────────────
-
 load_dotenv()
 API_KEY = os.getenv("API_FOOTBALL_KEY")
 TOKEN   = os.getenv("TELEGRAM_TOKEN")
@@ -23,14 +22,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ─── Helpers ─────────────────────────────────────────────────────────
+# ─── Funções Auxiliares ──────────────────────────────────────────────
 
 def parse_dt(ts: str) -> datetime:
+    """Converte ISO (com 'Z' ou '+00:00') em datetime tz-aware."""
     if ts.endswith("Z"):
         ts = ts[:-1] + "+00:00"
     return datetime.fromisoformat(ts)
 
 def fetch_fixtures(live: bool=None, date: str=None):
+    """Busca fixtures ao vivo (live=True) ou por date='YYYY-MM-DD'."""
     url = "https://v3.football.api-sports.io/fixtures"
     params = {}
     if live is not None:
@@ -46,13 +47,12 @@ def format_games(jogos):
     out = []
     for j in jogos:
         dt = parse_dt(j["fixture"]["date"])
-        hora = dt.strftime("%H:%M")
-        home = j["teams"]["home"]["name"]
-        away = j["teams"]["away"]["name"]
-        out.append(f"🕒 {hora} – ⚽ {home} x {away}")
+        out.append(f"🕒 {dt.strftime('%H:%M')} – ⚽ "
+                   f"{j['teams']['home']['name']} x {j['teams']['away']['name']}")
     return "\n".join(out) + "\n"
 
 def build_odds_message():
+    """Monta texto de odds de gols e escanteios (ao vivo + próximos 3h)."""
     agora   = datetime.now(timezone.utc)
     limite  = agora + timedelta(hours=3)
     ao_vivo = fetch_fixtures(live=True)
@@ -70,10 +70,8 @@ def build_odds_message():
         for j in jogos:
             fid = j["fixture"]["id"]
             dt  = parse_dt(j["fixture"]["date"])
-            hora = dt.strftime("%H:%M")
-            home = j["teams"]["home"]["name"]
-            away = j["teams"]["away"]["name"]
-            lines.append(f"🕒 {hora} – ⚽ {home} x {away}\n")
+            lines.append(f"🕒 {dt.strftime('%H:%M')} – ⚽ "
+                         f"{j['teams']['home']['name']} x {j['teams']['away']['name']}\n")
 
             odds = requests.get(
                 f"https://v3.football.api-sports.io/odds?fixture={fid}",
@@ -87,10 +85,9 @@ def build_odds_message():
             for book in odds[0].get("bookmakers", []):
                 for bet in book.get("bets", []):
                     n = bet["name"].lower()
-                    if "goals" in n:
-                        mercados.setdefault("gols", bet["values"])
-                    if "corners" in n:
-                        mercados.setdefault("escanteios", bet["values"])
+                    if "goals" in n:    mercados.setdefault("gols", bet["values"])
+                    if "corners" in n:  mercados.setdefault("escanteios", bet["values"])
+
             if "gols" in mercados:
                 for v in mercados["gols"][:2]:
                     lines.append(f"  ⚽ {v['value']}: {v['odd']}\n")
@@ -101,33 +98,31 @@ def build_odds_message():
 
     return "".join(lines)
 
-# ─── Handlers ────────────────────────────────────────────────────────
+# ─── Handlers Telegram ──────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /start")
+    logger.info("Received /start")
     await update.message.reply_text(
-        "👋 Olá! Sou seu Robô de Odds!\n\n"
-        "Comandos:\n"
-        "/jogos      – Listar ao vivo\n"
-        "/proximos   – Próximos (3h)\n"
-        "/tendencias – Tendências escanteios\n"
+        "👋 Olá! Sou seu Robô de Monitoramento de Odds!\n\n"
+        "/jogos      – Listar jogos ao vivo\n"
+        "/proximos   – Jogos que começam em até 3h\n"
+        "/tendencias – Alta tendência de escanteios\n"
         "/odds       – Odds de gols & escanteios\n"
-        "/ajuda      – Esta ajuda\n"
-        "/start      – Boas-vindas"
+        "/ajuda      – Esta ajuda"
     )
 
 async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /ajuda")
-    # Reusa a mensagem de start
+    logger.info("Received /ajuda")
+    # Reaproveita a mesma mensagem do /start
     await start(update, context)
 
 async def jogos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /jogos")
+    logger.info("Received /jogos")
     text = "📺 *Jogos Ao Vivo:*\n" + format_games(fetch_fixtures(live=True))
     await context.bot.send_message(update.effective_chat.id, text, parse_mode="Markdown")
 
 async def proximos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /proximos")
+    logger.info("Received /proximos")
     agora  = datetime.now(timezone.utc)
     limite = agora + timedelta(hours=3)
     prox   = [
@@ -138,15 +133,20 @@ async def proximos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, text, parse_mode="Markdown")
 
 async def tendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /tendencias")
+    logger.info("Received /tendencias")
     ao_vivo = fetch_fixtures(live=True)
     lista   = [f"{j['teams']['home']['name']} x {j['teams']['away']['name']}" for j in ao_vivo]
     text = "📊 *Tendências Ao Vivo:*\n" + ("\n".join(lista) or "_Nenhum_\n")
     await context.bot.send_message(update.effective_chat.id, text, parse_mode="Markdown")
 
 async def odds_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Recebido /odds")
-    msg = build_odds_message()
+    logger.info("Received /odds")
+    try:
+        msg = build_odds_message()
+    except Exception:
+        logger.exception("Error building odds message")
+        await update.message.reply_text("❌ Erro ao montar as odds.")
+        return
     await context.bot.send_message(update.effective_chat.id, msg, parse_mode="Markdown")
 
 async def auto_odds(context: ContextTypes.DEFAULT_TYPE):
@@ -158,12 +158,23 @@ async def auto_odds(context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         logger.exception("Falha no envio automático")
 
-# ─── Setup & Run ─────────────────────────────────────────────────────
+# ─── Main ────────────────────────────────────────────────────────────
 
 def main():
+    # Inicializa aplicação
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # registra comandos
+    # Registra comandos para o cliente Telegram mostrar sugestões
+    app.bot.set_my_commands([
+        BotCommand("start", "Inicia o bot"),
+        BotCommand("ajuda", "Mostra ajuda"),
+        BotCommand("jogos", "Lista jogos ao vivo"),
+        BotCommand("proximos", "Jogos que começam em até 3h"),
+        BotCommand("tendencias", "Tendências de escanteios"),
+        BotCommand("odds", "Odds de gols & escanteios"),
+    ])
+
+    # Adiciona handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ajuda", ajuda))
     app.add_handler(CommandHandler("jogos", jogos))
@@ -171,7 +182,7 @@ def main():
     app.add_handler(CommandHandler("tendencias", tendencias))
     app.add_handler(CommandHandler("odds", odds_cmd))
 
-    # agendamento automático: 1ª exec em 5s, depois a cada 600s
+    # Agenda automático: 1ª em 5s, depois a cada 600s
     app.job_queue.run_repeating(auto_odds, interval=600, first=5)
 
     logger.info("🤖 Bot iniciado e polling…")
