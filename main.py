@@ -56,63 +56,72 @@ def format_games(jogos):
     return "\n".join(out) + "\n"
 
 def build_odds_message():
-    agora    = datetime.now(timezone.utc)
-    limite   = agora + timedelta(hours=config["window_hours"])
-    ao_vivo  = fetch_fixtures(live=True)
-    proximos = [
-        j for j in fetch_fixtures(date=agora.date().isoformat())
-        if agora <= parse_dt(j["fixture"]["date"]) <= limite
-    ]
+    """
+    Monta texto de odds de gols e escanteios (ao vivo + próximos window_hours).
+    Envolve tudo num try/except para não quebrar em caso de erro inesperado.
+    """
+    try:
+        agora    = datetime.now(timezone.utc)
+        limite   = agora + timedelta(hours=config["window_hours"])
+        ao_vivo  = fetch_fixtures(live=True)
+        proximos = [
+            j for j in fetch_fixtures(date=agora.date().isoformat())
+            if agora <= parse_dt(j["fixture"]["date"]) <= limite
+        ]
 
-    lines = ["📊 *Odds de Gols e Escanteios:*\n"]
-    for title, jogos in [("📺 Jogos Ao Vivo", ao_vivo),
-                         (f"⏳ Próximos ({config['window_hours']}h)", proximos)]:
-        lines.append(f"{title}:\n")
-        if not jogos:
-            lines.append("_Nenhum jogo encontrado._\n\n")
-            continue
+        lines = ["📊 *Odds de Gols e Escanteios:*\n"]
+        for title, jogos in [
+            ("📺 Jogos Ao Vivo", ao_vivo),
+            (f"⏳ Próximos ({config['window_hours']}h)", proximos),
+        ]:
+            lines.append(f"{title}:\n")
+            if not jogos:
+                lines.append("_Nenhum jogo encontrado._\n\n")
+                continue
 
-        for j in jogos:
-            home = j["teams"]["home"]["name"]
-            away = j["teams"]["away"]["name"]
-            fid  = j["fixture"]["id"]
-            try:
-                dt = parse_dt(j["fixture"]["date"])
-                lines.append(f"🕒 {dt.strftime('%H:%M')} – ⚽ {home} x {away}\n")
+            for j in jogos:
+                home = j["teams"]["home"]["name"]
+                away = j["teams"]["away"]["name"]
+                fid  = j["fixture"]["id"]
+                try:
+                    dt = parse_dt(j["fixture"]["date"])
+                    lines.append(f"🕒 {dt.strftime('%H:%M')} – ⚽ {home} x {away}\n")
 
-                odds_resp = requests.get(
-                    f"https://v3.football.api-sports.io/odds?fixture={fid}",
-                    headers={"x-apisports-key": API_KEY}
-                )
-                odds_data = odds_resp.json().get("response", [])
-                if not odds_data:
-                    lines.append("  Sem odds disponíveis.\n\n")
-                    continue
+                    odds_resp = requests.get(
+                        f"https://v3.football.api-sports.io/odds?fixture={fid}",
+                        headers={"x-apisports-key": API_KEY}
+                    )
+                    odds_data = odds_resp.json().get("response", [])
+                    if not odds_data:
+                        lines.append("  Sem odds disponíveis.\n\n")
+                        continue
 
-                mercados = {}
-                for book in odds_data[0].get("bookmakers", []):
-                    for bet in book.get("bets", []):
-                        nm = bet["name"].lower()
-                        if "goals" in nm:
-                            mercados.setdefault("gols", bet["values"])
-                        if "corners" in nm:
-                            mercados.setdefault("escanteios", bet["values"])
+                    mercados = {}
+                    for book in odds_data[0].get("bookmakers", []):
+                        for bet in book.get("bets", []):
+                            nm = bet["name"].lower()
+                            if "goals" in nm:
+                                mercados.setdefault("gols", bet["values"])
+                            if "corners" in nm:
+                                mercados.setdefault("escanteios", bet["values"])
 
-                if "gols" in mercados:
-                    for v in mercados["gols"][:2]:
-                        lines.append(f"  ⚽ {v['value']}: {v['odd']}\n")
-                if "escanteios" in mercados:
-                    for v in mercados["escanteios"][:2]:
-                        lines.append(f"  🥅 {v['value']}: {v['odd']}\n")
-                lines.append("\n")
+                    if "gols" in mercados:
+                        for v in mercados["gols"][:2]:
+                            lines.append(f"  ⚽ {v['value']}: {v['odd']}\n")
+                    if "escanteios" in mercados:
+                        for v in mercados["escanteios"][:2]:
+                            lines.append(f"  🥅 {v['value']}: {v['odd']}\n")
+                    lines.append("\n")
 
-            except Exception:
-                # loga internamente o erro completo
-                logger.exception(f"Falha obtendo odds para {home} x {away}")
-                # notifica no texto que não foi possível obter aquelas odds
-                lines.append(f"❌ Erro ao buscar odds para {home} x {away}\n\n")
+                except Exception:
+                    logger.exception(f"Falha ao buscar odds para {home} x {away}")
+                    lines.append(f"❌ Falha nas odds de {home} x {away}\n\n")
 
-    return "".join(lines)
+        return "".join(lines)
+
+    except Exception:
+        logger.exception("Erro geral em build_odds_message")
+        return "❌ *Erro interno* ao montar dados de odds, tente novamente mais tarde."
 
 # ─── Handlers Telegram ──────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -150,13 +159,9 @@ async def tendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, text, parse_mode="Markdown")
 
 async def odds_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        msg = build_odds_message()
-        await context.bot.send_message(update.effective_chat.id, msg, parse_mode="Markdown")
-    except Exception:
-        # por segurança aqui não deve ocorrer nada, pois já tratamos tudo dentro de build_odds_message
-        logger.exception("Erro inesperado no /odds")
-        await update.message.reply_text("❌ Erro inesperado ao montar as odds.")
+    logger.info("Received /odds")
+    msg = build_odds_message()
+    await context.bot.send_message(update.effective_chat.id, msg, parse_mode="Markdown")
 
 async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -223,7 +228,7 @@ def main():
 
     auto_job = app.job_queue.run_repeating(auto_odds, interval=600, first=5)
 
-    logger.info("🤖 Bot iniciado!")
+    logger.info("🤖 Bot iniciado e polling…")
     app.run_polling()
 
 if __name__ == "__main__":
