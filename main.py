@@ -1,58 +1,90 @@
 import os
-import telegram
-from telegram.ext import Updater, CommandHandler
-from monitor_odds import odds_command
+import logging
+from datetime import datetime, timedelta, timezone
+import requests
 from dotenv import load_dotenv
-import threading
-import time
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    CallbackContext,
+)
 
-# Carrega as variáveis de ambiente
+# Carrega variáveis de ambiente
 load_dotenv()
+API_FOOTBALL_KEY = os.getenv("API_FOOTBALL_KEY")
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID          = int(os.getenv("CHAT_ID"))
 
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-CHAT_ID = int(os.getenv('CHAT_ID'))
+# Configura logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-bot = telegram.Bot(token=TELEGRAM_TOKEN)
+# Função que consulta odds
+def get_odds():
+    agora    = datetime.now(timezone.utc)
+    daqui3h  = agora + timedelta(hours=3)
+    headers  = {"x-apisports-key": API_FOOTBALL_KEY}
 
-# Envio automático de odds
-def enviar_odds_automaticamente():
-    while True:
-        try:
-            odds_command(None, None)
-            print("✅ Mensagem automática enviada com sucesso!")
-        except Exception as e:
-            print(f"❌ Erro ao enviar mensagem automática: {e}")
-        time.sleep(600)  # 10 minutos
+    # APENAS para demo, import local:
+    from monitor_odds import _build_message
+    return _build_message(agora, daqui3h, headers)
 
-# Comandos
-def start(update, context):
-    update.message.reply_text(
-        "👋 Olá! Eu sou seu Robô de Monitoramento de Odds!\n\n"
-        "Use os comandos:\n"
-        "/odds - Ver odds de gols e escanteios\n"
-        "/start - Mensagem de boas-vindas\n"
-        "/ajuda - Mostrar comandos"
+# Handler /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Olá! Sou seu Robô de Monitoramento de Odds!\n\n"
+        "Use:\n"
+        "/odds   – Odds agora\n"
+        "/start  – Boas-vindas\n"
+        "/ajuda  – Comandos"
     )
 
-def ajuda(update, context):
-    update.message.reply_text(
-        "📋 Comandos disponíveis:\n"
-        "/odds - Ver odds\n"
-        "/start - Boas-vindas\n"
-        "/ajuda - Esta ajuda"
+# Handler /ajuda
+async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📋 Comandos:\n"
+        "/odds   – Ver odds de gols e escanteios\n"
+        "/start  – Inicia o bot\n"
+        "/ajuda  – Esta ajuda"
     )
 
-updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+# Handler /odds manual
+async def odds_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = get_odds()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=msg,
+        parse_mode="Markdown"
+    )
 
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("ajuda", ajuda))
-dispatcher.add_handler(CommandHandler("odds", odds_command))
+# Tarefa automática
+async def automatic_odds(context: CallbackContext):
+    msg = get_odds()
+    await context.bot.send_message(
+        chat_id=CHAT_ID,
+        text=msg,
+        parse_mode="Markdown"
+    )
 
-print("🤖 Bot ouvindo todos os comandos...")
-updater.start_polling()
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-# Rodar o envio automático paralelo
-threading.Thread(target=enviar_odds_automaticamente, daemon=True).start()
+    # registra comandos
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ajuda", ajuda))
+    app.add_handler(CommandHandler("odds", odds_command))
 
-updater.idle()
+    # agenda envio automático a cada 600s (10 min), primeiro disparo imediato
+    jq = app.job_queue
+    jq.run_repeating(automatic_odds, interval=600, first=0)
+
+    logger.info("🤖 Bot iniciado e ouvindo comandos...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
