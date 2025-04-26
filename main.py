@@ -9,7 +9,14 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     CallbackContext,
-)
+async def automatic_odds(context: ContextTypes.DEFAULT_TYPE):
+    logger.info("🚀 Executando job automatic_odds")
+    msg = get_odds()
+    await context.bot.send_message(
+        chat_id=CHAT_ID,
+        text=msg,
+        parse_mode="Markdown"
+    )
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -79,9 +86,9 @@ def main():
     app.add_handler(CommandHandler("ajuda", ajuda))
     app.add_handler(CommandHandler("odds", odds_command))
 
-    # agenda envio automático a cada 600s (10 min), primeiro disparo imediato
+   # dispara 3 segundos após o start, e depois a cada 600s
     jq = app.job_queue
-    jq.run_repeating(automatic_odds, interval=600, first=0)
+    jq.run_repeating(automatic_odds, interval=600, first=3)
 
     logger.info("🤖 Bot iniciado e ouvindo comandos...")
     app.run_polling()
