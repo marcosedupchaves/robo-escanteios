@@ -21,12 +21,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ─── CONFIGURAÇÃO & LOG ───────────────────────────────────────────────
+# ─── CONFIGURAÇÃO & LOGGING ───────────────────────────────────────────
 load_dotenv()
-API_KEY        = os.getenv("API_FOOTBALL_KEY")
-TOKEN          = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID        = int(os.getenv("CHAT_ID", "0"))
-LOCAL_TZ       = ZoneInfo("America/Sao_Paulo")
+API_KEY   = os.getenv("API_FOOTBALL_KEY")
+TOKEN     = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID   = int(os.getenv("CHAT_ID", "0"))
+LOCAL_TZ  = ZoneInfo("America/Sao_Paulo")
 
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 config = {
     "window_hours": 3,
     "auto_enabled": True,
-    "leagues": []    # vazio = todas
+    "leagues": []
 }
 all_leagues = []
 PAGE_SIZE   = 8
@@ -107,14 +107,15 @@ def make_league_keyboard(page:int=0):
     for lid,name in chunk:
         prefix = "✅ " if lid in config["leagues"] else ""
         kb.append([InlineKeyboardButton(
-            f"{prefix}{name} [{lid}]",
-            callback_data=f"liga_toggle:{page}:{lid}"
+            f"{prefix}{name} [{lid}]", callback_data=f"liga_toggle:{page}:{lid}"
         )])
     nav=[]
-    if page>0:                    nav.append(InlineKeyboardButton("👈 Anterior",callback_data=f"liga_nav:{page-1}"))
-    if start+PAGE_SIZE<len(all_leagues):
+    if page>0:
+        nav.append(InlineKeyboardButton("👈 Anterior",callback_data=f"liga_nav:{page-1}"))
+    if start+PAGE_SIZE < len(all_leagues):
         nav.append(InlineKeyboardButton("Próxima 👉",callback_data=f"liga_nav:{page+1}"))
-    if nav: kb.append(nav)
+    if nav:
+        kb.append(nav)
     return InlineKeyboardMarkup(kb)
 
 # ─── HANDLERS ──────────────────────────────────────────────────────────
@@ -124,28 +125,33 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/liga list   – Filtrar ligas\n"
         "/jogos       – Estatísticas ao vivo\n"
         "/proximos    – Próximos jogos\n"
-        "/tendencias  – Tendências de escanteios\n"
+        "/tendencias  – Tendências escanteios\n"
         "/odds        – Odds gols & escanteios\n"
         "/config      – Configurações\n"
         "/ajuda       – Este menu",
         parse_mode="Markdown"
     )
 
-async def ajuda(update, ctx):  await start(update, ctx)
+async def ajuda(update, ctx):
+    await start(update, ctx)
 
 async def liga_cmd(update, ctx):
     if not ctx.args or ctx.args[0].lower()!="list":
         return await update.message.reply_text("Use `/liga list`.", parse_mode="Markdown")
     pages = (len(all_leagues)-1)//PAGE_SIZE+1
-    await update.message.reply_text(f"🔍 Filtrar ligas (1/{pages}):",
-        reply_markup=make_league_keyboard(0), parse_mode="Markdown")
+    await update.message.reply_text(
+        f"🔍 Filtrar ligas (1/{pages}):",
+        reply_markup=make_league_keyboard(0),
+        parse_mode="Markdown"
+    )
 
 async def liga_nav_cb(update, ctx):
     _,pg = update.callback_query.data.split(":"); pg=int(pg)
     pages = (len(all_leagues)-1)//PAGE_SIZE+1
     await update.callback_query.edit_message_text(
         f"🔍 Filtrar ligas ({pg+1}/{pages}):",
-        reply_markup=make_league_keyboard(pg), parse_mode="Markdown"
+        reply_markup=make_league_keyboard(pg),
+        parse_mode="Markdown"
     )
     await update.callback_query.answer()
 
@@ -204,12 +210,16 @@ async def tendencias(update, ctx):
     await update.message.reply_text(txt, parse_mode="Markdown")
 
 async def odds_cmd(update, ctx):
-    # coloque aqui sua lógica de build_odds_message()
+    # aqui você pode chamar sua build_odds_message()
     await update.message.reply_text("_Odds a implementar_", parse_mode="Markdown")
 
 async def config_cmd(update, ctx):
     if not ctx.args:
-        txt = f"Janela: {config['window_hours']}h\nAuto: {'on' if config['auto_enabled'] else 'off'}\nLigas: {config['leagues'] or 'todas'}"
+        txt = (
+            f"Janela: {config['window_hours']}h\n"
+            f"Auto: {'on' if config['auto_enabled'] else 'off'}\n"
+            f"Ligas: {config['leagues'] or 'todas'}"
+        )
         return await update.message.reply_text(f"⚙️ Config:\n{txt}", parse_mode="Markdown")
     c = ctx.args[0].lower()
     if c=="janela" and len(ctx.args)>1 and ctx.args[1].isdigit():
@@ -222,21 +232,23 @@ async def config_cmd(update, ctx):
     else:
         await update.message.reply_text("Uso: /config [janela <h> | auto on/off]")
 
+# ─── SCHEDULER COM asyncio ────────────────────────────────────────────
 async def periodic_sender(app):
-    await app.updater.start_polling()  # inicia o polling internamente
+    # espera um pouco pra garantir polling ativo
+    await asyncio.sleep(5)
     while True:
-        await asyncio.sleep(600)
         if config["auto_enabled"]:
-            # reutilize odds_cmd logic
-            msg = "_Envio automático de odds..._"
-            await app.bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+            # gere sua mensagem de odds aqui
+            # msg = build_odds_message()
+            await app.bot.send_message(CHAT_ID, "_Odds automáticas…_", parse_mode="Markdown")
+        await asyncio.sleep(600)
 
+# ─── BOOT & POLLING ───────────────────────────────────────────────────
 async def main():
     load_leagues()
-    # build app sem JobQueue
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # set commands
+    # registra comandos do Telegram
     await app.bot.set_my_commands([
         BotCommand("start","Iniciar"),
         BotCommand("ajuda","Ajuda"),
@@ -260,8 +272,8 @@ async def main():
     app.add_handler(CommandHandler("odds",     odds_cmd))
     app.add_handler(CommandHandler("config",   config_cmd))
 
-    logger.info("🤖 Bot iniciado, entrando em polling + scheduler…")
-    # dispara polling e periodic sender em paralelo
+    logger.info("🤖 Bot iniciado e entrando em polling + scheduler…")
+    # executa polling e scheduler em paralelo
     await asyncio.gather(
         app.run_polling(poll_interval=3),
         periodic_sender(app)
