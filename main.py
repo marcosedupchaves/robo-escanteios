@@ -9,6 +9,7 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     CallbackContext,
+    )
 async def automatic_odds(context: ContextTypes.DEFAULT_TYPE):
     logger.info("🚀 Executando job automatic_odds")
     msg = get_odds()
