@@ -1,49 +1,76 @@
 import os
 import requests
-from dotenv import load_dotenv
-from telegram import ParseMode
+from datetime import datetime, timedelta, timezone
 
-load_dotenv()
+API_KEY = os.getenv("API_FOOTBALL_KEY")
 
-API_KEY = os.getenv('API_FOOTBALL_KEY')
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
-CHAT_ID = int(os.getenv('CHAT_ID'))
+def _build_message(agora, daqui3h, headers):
+    # Busca torneios ao vivo e futuros
+    resp_live = requests.get(
+        "https://v3.football.api-sports.io/fixtures?live=all",
+        headers=headers
+    )
+    live = resp_live.json().get("response", [])
+
+    resp_prox = requests.get(
+        f"https://v3.football.api-sports.io/fixtures?date={agora.date()}",
+        headers=headers
+    )
+    prox = [
+        j for j in resp_prox.json().get("response", [])
+        if agora <= datetime.fromisoformat(j["fixture"]["date"][:-1]).replace(tzinfo=timezone.utc) <= daqui3h
+    ]
+
+    categorias = {
+        "📺 Jogos Ao Vivo": live,
+        "⏳ Jogos Próximos (até 3h)": prox
+    }
+
+    msg_lines = ["📊 *Odds de Gols e Escanteios:*\n"]
+    for titulo, jogos in categorias.items():
+        msg_lines.append(f"{titulo}:\n")
+        if not jogos:
+            msg_lines.append("_Nenhum jogo encontrado._\n\n")
+            continue
+
+        for j in jogos:
+            fid   = j["fixture"]["id"]
+            home  = j["teams"]["home"]["name"]
+            away  = j["teams"]["away"]["name"]
+            hora  = datetime.fromisoformat(j["fixture"]["date"][:-1])\
+                       .strftime("%H:%M")
+            msg_lines.append(f"🕒 {hora} - ⚽ {home} x {away}\n")
+
+            odds_resp = requests.get(
+                f"https://v3.football.api-sports.io/odds?fixture={fid}",
+                headers=headers
+            )
+            odds_data = odds_resp.json().get("response", [])
+            if not odds_data:
+                msg_lines.append("  Sem odds disponíveis.\n\n")
+                continue
+
+            mercados = {}
+            for b in odds_data[0].get("bookmakers", []):
+                for bet in b.get("bets", []):
+                    nome = bet["name"].lower()
+                    if "goals" in nome:
+                        mercados.setdefault("gols", bet["values"])
+                    elif "corners" in nome:
+                        mercados.setdefault("escanteios", bet["values"])
+
+            if "gols" in mercados:
+                for v in mercados["gols"][:2]:
+                    msg_lines.append(f"  ⚽ Gols {v['value']}: {v['odd']}\n")
+            if "escanteios" in mercados:
+                for v in mercados["escanteios"][:2]:
+                    msg_lines.append(f"  🥅 Escanteios {v['value']}: {v['odd']}\n")
+            msg_lines.append("\n")
+
+    return "".join(msg_lines)
 
 def get_odds():
-    from datetime import datetime, timedelta
-    agora = datetime.utcnow()
-    daqui_3h = agora + timedelta(hours=3)
-
-    url = "https://v3.football.api-sports.io/odds/live"
-    headers = {
-        'x-apisports-key': API_KEY
-    }
-    response = requests.get(url, headers=headers)
-    jogos = response.json().get('response', [])
-
-    odds_msg = "📊 *Odds de Gols e Escanteios:*\n"
-
-    if jogos:
-        odds_msg += "📺 *Jogos Ao Vivo:*\n"
-        for j in jogos:
-            times = f"{j['teams']['home']['name']} x {j['teams']['away']['name']}"
-            horario = datetime.fromisoformat(j['fixture']['date'][:-1]).strftime('%H:%M')
-            odds_msg += f"🕒 {horario} - ⚽ {times}\n"
-            mercados = j.get('bookmakers', [])
-            for mercado in mercados:
-                if mercado['betting_type'] == "Goals Over/Under":
-                    for aposta in mercado['bets']:
-                        odds_msg += f"  ⚽ {aposta['name']}: {aposta['odd']}\n"
-                if mercado['betting_type'] == "Corners Over/Under":
-                    for aposta in mercado['bets']:
-                        odds_msg += f"  🥅 {aposta['name']}: {aposta['odd']}\n"
-            odds_msg += "\n"
-    else:
-        odds_msg += "❌ Nenhum jogo ao vivo encontrado.\n"
-
-    return odds_msg
-
-def odds_command(update, context):
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    mensagem = get_odds()
-    bot.send_message(chat_id=CHAT_ID, text=mensagem, parse_mode=ParseMode.MARKDOWN)
+    agora   = datetime.now(timezone.utc)
+    daqui3h = agora + timedelta(hours=3)
+    headers = {"x-apisports-key": API_KEY}
+    return _build_message(agora, daqui3h, headers)
