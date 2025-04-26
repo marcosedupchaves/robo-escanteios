@@ -4,7 +4,12 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import requests
 from dotenv import load_dotenv
-from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    BotCommand,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -16,12 +21,11 @@ from telegram.ext import (
 
 # ─── CONFIGURAÇÃO & DEBUG ─────────────────────────────────────────────
 load_dotenv()
-API_KEY = os.getenv("API_FOOTBALL_KEY")
-TOKEN   = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID"))
+API_KEY  = os.getenv("API_FOOTBALL_KEY")
+TOKEN    = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID  = int(os.getenv("CHAT_ID"))
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
-# Ativa logs detalhados, inclusive de todas as requisições
 logging.basicConfig(
     format="%(asctime)s %(levelname)s: %(message)s",
     level=logging.DEBUG
@@ -64,15 +68,17 @@ def load_leagues():
     global all_leagues
     all_leagues = [(e["league"]["id"], e["league"]["name"]) for e in resp]
 
-# ─── MENSAGENS ────────────────────────────────────────────────────────
+# ─── FORMATAÇÃO DE MENSAGENS ──────────────────────────────────────────
 def format_games(jogos):
     if not jogos:
         return "_Nenhum jogo disponível._"
     out = []
     for j in jogos:
         dt_local = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
-        out.append(f"🕒 {dt_local.strftime('%H:%M')} – ⚽ "
-                   f"{j['teams']['home']['name']} x {j['teams']['away']['name']}")
+        out.append(
+            f"🕒 {dt_local.strftime('%H:%M')} – ⚽ "
+            f"{j['teams']['home']['name']} x {j['teams']['away']['name']}"
+        )
     return "\n".join(out)
 
 def build_odds_message():
@@ -83,15 +89,22 @@ def build_odds_message():
         j for j in fetch_fixtures(date=agora.date().isoformat())
         if agora <= parse_dt(j["fixture"]["date"]) <= limite
     ]
+
     lines = ["📊 *Odds de Gols e Escanteios:*\n"]
-    for title, jogos in [("📺 Ao Vivo", ao_vivo), (f"⏳ Próximos ({config['window_hours']}h)", prox)]:
+    for title, jogos in [
+        ("📺 Ao Vivo", ao_vivo),
+        (f"⏳ Próximos ({config['window_hours']}h)", prox),
+    ]:
         lines.append(f"{title}:\n")
         if not jogos:
             lines.append("_Nenhum_\n\n")
             continue
         for j in jogos:
             dt = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
-            lines.append(f"🕒 {dt.strftime('%H:%M')} – {j['teams']['home']['name']} x {j['teams']['away']['name']}\n")
+            lines.append(
+                f"🕒 {dt.strftime('%H:%M')} – "
+                f"{j['teams']['home']['name']} x {j['teams']['away']['name']}\n"
+            )
             odds = requests.get(
                 f"https://v3.football.api-sports.io/odds?fixture={j['fixture']['id']}",
                 headers={"x-apisports-key": API_KEY}
@@ -99,6 +112,7 @@ def build_odds_message():
             if not odds:
                 lines.append("  Sem odds.\n\n")
                 continue
+
             mercados = {}
             for b in odds[0].get("bookmakers", []):
                 for bet in b.get("bets", []):
@@ -138,9 +152,9 @@ def make_league_keyboard(page: int = 0):
 
 # ─── HANDLERS ────────────────────────────────────────────────────────
 async def debug_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text if update.message else "<no message>"
-    logger.debug(f"DEBUG_ALL received: {text!r}")
-    # não respondemos para não poluir chat
+    # Apenas loga o texto recebido, não bloqueia outros handlers
+    if update.message:
+        logger.debug(f"DEBUG_ALL received: {update.message.text!r}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -156,7 +170,7 @@ async def liga_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args or args[0].lower() != "list":
         return await update.message.reply_text("Use `/liga list`.", parse_mode="Markdown")
-    total = (len(all_leagues)-1)//PAGE_SIZE + 1
+    total = (len(all_leagues) - 1) // PAGE_SIZE + 1
     await update.message.reply_text(
         f"⚽ _Filtrar ligas_ (página 1/{total}):",
         reply_markup=make_league_keyboard(0),
@@ -166,7 +180,7 @@ async def liga_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def liga_nav_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, page = update.callback_query.data.split(":")
     page = int(page)
-    total = (len(all_leagues)-1)//PAGE_SIZE + 1
+    total = (len(all_leagues) - 1) // PAGE_SIZE + 1
     await update.callback_query.edit_message_text(
         f"⚽ _Filtrar ligas_ (página {page+1}/{total}):",
         reply_markup=make_league_keyboard(page),
@@ -181,9 +195,7 @@ async def liga_toggle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         config["leagues"].remove(lid)
     else:
         config["leagues"].append(lid)
-    await update.callback_query.edit_message_reply_markup(
-        make_league_keyboard(int(page))
-    )
+    await update.callback_query.edit_message_reply_markup(make_league_keyboard(int(page)))
     await update.callback_query.answer(f"Ligas: {config['leagues'] or 'todas'}")
 
 async def jogos(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -191,24 +203,25 @@ async def jogos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text or "_Nenhum jogo ao vivo._", parse_mode="Markdown")
 
 async def proximos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    agora = datetime.now(timezone.utc)
+    agora  = datetime.now(timezone.utc)
     limite = agora + timedelta(hours=config["window_hours"])
-    prox = [
+    prox   = [
         j for j in fetch_fixtures(date=agora.date().isoformat())
         if agora <= parse_dt(j["fixture"]["date"]) <= limite
     ]
-    text = "⏳ Próximos:\n" + "\n".join(
-        f"🕒 {parse_dt(j['fixture']['date']).astimezone(LOCAL_TZ).strftime('%H:%M')} – "
-        f"{j['teams']['home']['name']} x {j['teams']['away']['name']}"
-        for j in prox
-    ) or "_Nenhum_"
-    await update.message.reply_text(text, parse_mode="Markdown")
+    lines = ["⏳ *Próximos*:\n"]
+    for j in prox:
+        dt = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
+        lines.append(f"🕒 {dt.strftime('%H:%M')} – {j['teams']['home']['name']} x {j['teams']['away']['name']}")
+    await update.message.reply_text("\n".join(lines) or "_Nenhum_", parse_mode="Markdown")
 
 async def tendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ao_vivo = fetch_fixtures(live=True)
     lista = [f"{j['teams']['home']['name']} x {j['teams']['away']['name']}" for j in ao_vivo]
-    text = "📊 Tendências:\n" + ("\n".join(lista) or "_Nenhum_")
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(
+        "📊 *Tendências*\n" + ("\n".join(lista) or "_Nenhum_"),
+        parse_mode="Markdown"
+    )
 
 async def odds_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = build_odds_message()
@@ -224,9 +237,9 @@ async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return await update.message.reply_text(f"⚙️ Config:\n{status}", parse_mode="Markdown")
     cmd = args[0].lower()
-    if cmd in ("janela",) and len(args) > 1 and args[1].isdigit():
+    if cmd == "janela" and len(args) > 1 and args[1].isdigit():
         config["window_hours"] = int(args[1])
-        await update.message.reply_text(f"⏱️ Janela ajustada para {args[1]}h.")
+        await update.message.reply_text(f"⏱️ Janela agora é {args[1]}h.")
     elif cmd == "auto" and len(args) > 1 and args[1].lower() in ("on", "off"):
         flag = args[1].lower() == "on"
         config["auto_enabled"] = flag
@@ -241,25 +254,12 @@ async def auto_odds(context: ContextTypes.DEFAULT_TYPE):
         msg = build_odds_message()
         await context.bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
 
-# ─── INICIALIZAÇÃO & DEPURAÇÃO ───────────────────────────────────────
+# ─── INICIALIZAÇÃO ────────────────────────────────────────────────────
 def main():
     load_leagues()
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # registra handlers
-    app.add_handler(MessageHandler(filters.ALL, debug_all), group=0)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ajuda", ajuda))
-    app.add_handler(CommandHandler("liga", liga_cmd))
-    app.add_handler(CallbackQueryHandler(liga_nav_cb,    pattern=r"^liga_nav:"))
-    app.add_handler(CallbackQueryHandler(liga_toggle_cb, pattern=r"^liga_toggle:"))
-    app.add_handler(CommandHandler("jogos", jogos))
-    app.add_handler(CommandHandler("proximos", proximos))
-    app.add_handler(CommandHandler("tendencias", tendencias))
-    app.add_handler(CommandHandler("odds", odds_cmd))
-    app.add_handler(CommandHandler("config", config_cmd))
-
-    # sugere comandos no Telegram
+    # comandos Telegram
     app.bot.set_my_commands([
         BotCommand("start","Boas-vindas"),
         BotCommand("liga","Menu de ligas"),
@@ -271,18 +271,27 @@ def main():
         BotCommand("ajuda","Ajuda"),
     ])
 
-    # job automático
-    global auto_job
-    auto_job = app.job_queue.run_repeating(auto_odds, interval=600, first=2)
+    # handlers de comandos (grupo 0)
+    app.add_handler(CommandHandler("start", start),     group=0)
+    app.add_handler(CommandHandler("ajuda", ajuda),     group=0)
+    app.add_handler(CommandHandler("liga", liga_cmd),   group=0)
+    app.add_handler(CallbackQueryHandler(liga_nav_cb,    pattern=r"^liga_nav:"),    group=0)
+    app.add_handler(CallbackQueryHandler(liga_toggle_cb, pattern=r"^liga_toggle:"), group=0)
+    app.add_handler(CommandHandler("jogos", jogos),     group=0)
+    app.add_handler(CommandHandler("proximos", proximos), group=0)
+    app.add_handler(CommandHandler("tendencias", tendencias), group=0)
+    app.add_handler(CommandHandler("odds", odds_cmd),    group=0)
+    app.add_handler(CommandHandler("config", config_cmd), group=0)
 
-    # imprime handlers registrados
-    for grp, handlers in app.handlers.items():
-        for h in handlers:
-            logger.debug(f"Handler group={grp}: {h}")
+    # debug ALL (só no grupo 1, após comandos)
+    app.add_handler(MessageHandler(filters.ALL, debug_all), group=1)
+
+    # job automático de odds
+    global auto_job
+    auto_job = app.job_queue.run_repeating(auto_odds, interval=600, first=5)
 
     logger.info("🤖 Bot iniciado e polling…")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-    
