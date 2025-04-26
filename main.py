@@ -23,7 +23,6 @@ API_KEY = os.getenv("API_FOOTBALL_KEY")
 TOKEN   = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = int(os.getenv("CHAT_ID"))
 
-# define fuso horário do usuário
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 logging.basicConfig(
@@ -39,7 +38,7 @@ config = {
     "leagues": []    # IDs de ligas selecionadas; vazio = todas
 }
 all_leagues = []    # será preenchido no startup
-PAGE_SIZE  = 8      # quantas ligas por página
+PAGE_SIZE  = 8      # itens por página
 auto_job   = None
 
 # ─── Helpers ─────────────────────────────────────────────────────────
@@ -55,16 +54,15 @@ def fetch_fixtures(live: bool=None, date: str=None):
     if date:                params["date"]   = date
     if config["leagues"]:
         params["league"] = ",".join(map(str, config["leagues"]))
-    headers = {"x-apisports-key": API_KEY}
-    return requests.get(url, headers=headers, params=params).json().get("response", [])
+    r = requests.get(url, headers={"x-apisports-key": API_KEY}, params=params)
+    return r.json().get("response", [])
 
 def format_games(jogos):
     if not jogos:
         return "_Nenhum jogo disponível._\n"
     out = []
     for j in jogos:
-        dt_utc   = parse_dt(j["fixture"]["date"])
-        dt_local = dt_utc.astimezone(LOCAL_TZ)
+        dt_local = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
         out.append(f"🕒 {dt_local.strftime('%H:%M')} – ⚽ "
                    f"{j['teams']['home']['name']} x {j['teams']['away']['name']}")
     return "\n".join(out) + "\n"
@@ -78,10 +76,7 @@ def load_leagues():
         params={"season": now_year}
     )
     arr = resp.json().get("response", [])
-    all_leagues = [
-        (e["league"]["id"], e["league"]["name"])
-        for e in arr
-    ]
+    all_leagues = [(e["league"]["id"], e["league"]["name"]) for e in arr]
 
 def build_odds_message():
     agora    = datetime.now(timezone.utc)
@@ -93,15 +88,11 @@ def build_odds_message():
     ]
 
     lines = ["📊 *Odds de Gols e Escanteios:*\n"]
-    for title, jogos in [
-        ("📺 Ao Vivo", ao_vivo),
-        (f"⏳ Próximos ({config['window_hours']}h)", proximos),
-    ]:
+    for title, jogos in [("📺 Ao Vivo", ao_vivo), (f"⏳ Próximos ({config['window_hours']}h)", proximos)]:
         lines.append(f"{title}:\n")
         if not jogos:
             lines.append("_Nenhum jogo disponível._\n\n")
             continue
-
         for j in jogos:
             home = j["teams"]["home"]["name"]
             away = j["teams"]["away"]["name"]
@@ -109,7 +100,6 @@ def build_odds_message():
             try:
                 dt_local = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
                 lines.append(f"🕒 {dt_local.strftime('%H:%M')} – ⚽ {home} x {away}\n")
-
                 odds = requests.get(
                     f"https://v3.football.api-sports.io/odds?fixture={fid}",
                     headers={"x-apisports-key": API_KEY}
@@ -117,7 +107,6 @@ def build_odds_message():
                 if not odds:
                     lines.append("  Sem odds disponíveis.\n\n")
                     continue
-
                 mercados = {}
                 for b in odds[0].get("bookmakers", []):
                     for bet in b.get("bets", []):
@@ -126,7 +115,6 @@ def build_odds_message():
                             mercados.setdefault("gols", bet["values"])
                         if "corners" in n:
                             mercados.setdefault("escanteios", bet["values"])
-
                 if "gols" in mercados:
                     for v in mercados["gols"][:2]:
                         lines.append(f"  ⚽ {v['value']}: {v['odd']}\n")
@@ -134,14 +122,11 @@ def build_odds_message():
                     for v in mercados["escanteios"][:2]:
                         lines.append(f"  🥅 {v['value']}: {v['odd']}\n")
                 lines.append("\n")
-
             except Exception:
                 logger.exception(f"Erro nas odds de {home} x {away}")
                 lines.append(f"❌ Falha nas odds de {home} x {away}\n\n")
-
     return "".join(lines)
 
-# ─── Menu de Ligas ───────────────────────────────────────────────────
 def make_league_keyboard(page: int = 0):
     start = page * PAGE_SIZE
     end   = start + PAGE_SIZE
@@ -149,9 +134,10 @@ def make_league_keyboard(page: int = 0):
     buttons = []
     for lid, name in chunk:
         prefix = "✅ " if lid in config["leagues"] else ""
-        text = f"{prefix}{name} [{lid}]"
-        cb   = f"liga_toggle:{page}:{lid}"
-        buttons.append([InlineKeyboardButton(text, callback_data=cb)])
+        buttons.append([InlineKeyboardButton(
+            f"{prefix}{name} [{lid}]",
+            callback_data=f"liga_toggle:{page}:{lid}"
+        )])
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton("👈 Anterior", callback_data=f"liga_nav:{page-1}"))
@@ -165,13 +151,13 @@ def make_league_keyboard(page: int = 0):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Olá! Bot de Odds ativo!\n\n"
-        "⚽ /liga       – Gerenciar filtro de ligas\n"
-        "📺 /jogos      – Mostrar jogos ao vivo\n"
-        "⏳ /proximos   – Jogos que começam em até janela configurada\n"
-        "📊 /tendencias – Tendências de escanteios ao vivo\n"
-        "🎲 /odds       – Odds de gols e escanteios\n"
-        "⚙️ /config     – Ver/ajustar configurações\n"
-        "❓ /ajuda      – Este menu de ajuda",
+        "⚽ /liga list   – Abrir menu de ligas\n"
+        "📺 /jogos       – Mostrar jogos ao vivo\n"
+        "⏳ /proximos    – Próximos (janela config)\n"
+        "📊 /tendencias  – Tendências de escanteios\n"
+        "🎲 /odds        – Odds de gols e escanteios\n"
+        "⚙️ /config      – Ver/ajustar configurações\n"
+        "❓ /ajuda       – Este menu de ajuda",
         parse_mode="Markdown"
     )
 
@@ -179,6 +165,13 @@ async def ajuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 async def liga_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args or args[0].lower() != "list":
+        await update.message.reply_text(
+            "⚽ Use `/liga list` para abrir o menu de ligas.",
+            parse_mode="Markdown"
+        )
+        return
     await update.message.reply_text(
         f"⚽ _Filtrar ligas_ (página 1/{(len(all_leagues)-1)//PAGE_SIZE+1}):",
         reply_markup=make_league_keyboard(0),
@@ -204,7 +197,9 @@ async def liga_toggle_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
         config["leagues"].remove(lid)
     else:
         config["leagues"].append(lid)
-    await query.edit_message_reply_markup(reply_markup=make_league_keyboard(int(page)))
+    await query.edit_message_reply_markup(
+        reply_markup=make_league_keyboard(int(page))
+    )
     await query.answer(f"Ligas agora: {config['leagues'] or 'todas'}")
 
 async def jogos(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,14 +237,12 @@ async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚙️ Config atual:\n{status}", parse_mode="Markdown")
         return
     cmd = args[0].lower()
-    if cmd in ("janela", "window") and len(args) > 1 and args[1].isdigit():
+    if cmd in ("janela","window") and len(args)>1 and args[1].isdigit():
         h = int(args[1]); config["window_hours"] = h
         await update.message.reply_text(f"⏱️ Janela alterada para {h}h.")
-    elif cmd == "auto" and len(args) > 1 and args[1].lower() in ("on", "off"):
-        flag = args[1].lower() == "on"
-        config["auto_enabled"] = flag
-        if auto_job:
-            auto_job.resume() if flag else auto_job.pause()
+    elif cmd=="auto" and len(args)>1 and args[1].lower() in ("on","off"):
+        flag = args[1].lower()=="on"; config["auto_enabled"] = flag
+        if auto_job: auto_job.resume() if flag else auto_job.pause()
         await update.message.reply_text(f"🔔 Auto-enviar {'ativado' if flag else 'desativado'}.")
     else:
         await update.message.reply_text(
@@ -272,7 +265,7 @@ def main():
 
     app.bot.set_my_commands([
         BotCommand("start","Boas-vindas"),
-        BotCommand("liga","Filtro de ligas"),
+        BotCommand("liga","Gerenciar ligas"),
         BotCommand("jogos","Ao vivo"),
         BotCommand("proximos","Próximos"),
         BotCommand("tendencias","Tendências"),
