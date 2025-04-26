@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 # ─── Config Dinâmica ─────────────────────────────────────────────────
 config = {
     "window_hours": 3,
-    "auto_enabled": True
+    "auto_enabled": True,
+    "leagues": []   # IDs de ligas que serão monitoradas; vazio = todas
 }
 auto_job = None
 
 # ─── Helpers ─────────────────────────────────────────────────────────
 def parse_dt(ts: str) -> datetime:
-    """Converte ISO (Z ou +00:00) em datetime tz-aware."""
     if ts.endswith("Z"):
         ts = ts[:-1] + "+00:00"
     return datetime.fromisoformat(ts)
@@ -39,8 +39,11 @@ def parse_dt(ts: str) -> datetime:
 def fetch_fixtures(live: bool=None, date: str=None):
     url = "https://v3.football.api-sports.io/fixtures"
     params = {}
-    if live is not None: params["live"] = "all"
-    if date:           params["date"] = date
+    if live is not None:    params["live"]   = "all"
+    if date:                params["date"]   = date
+    if config["leagues"]:
+        # filtra apenas IDs selecionados
+        params["league"] = ",".join(str(l) for l in config["leagues"])
     headers = {"x-apisports-key": API_KEY}
     r = requests.get(url, headers=headers, params=params)
     return r.json().get("response", [])
@@ -50,16 +53,12 @@ def format_games(jogos):
         return "_Nenhum jogo encontrado._\n"
     out = []
     for j in jogos:
-        dt = parse_dt(j["fixture"]["date"])
+        dt   = parse_dt(j["fixture"]["date"])
         out.append(f"🕒 {dt.strftime('%H:%M')} – ⚽ "
                    f"{j['teams']['home']['name']} x {j['teams']['away']['name']}")
     return "\n".join(out) + "\n"
 
 def build_odds_message():
-    """
-    Monta texto de odds de gols e escanteios (ao vivo + próximos window_hours).
-    Envolve tudo num try/except para não quebrar em caso de erro inesperado.
-    """
     try:
         agora    = datetime.now(timezone.utc)
         limite   = agora + timedelta(hours=config["window_hours"])
@@ -114,7 +113,7 @@ def build_odds_message():
                     lines.append("\n")
 
                 except Exception:
-                    logger.exception(f"Falha ao buscar odds para {home} x {away}")
+                    logger.exception(f"Falha nas odds de {home} x {away}")
                     lines.append(f"❌ Falha nas odds de {home} x {away}\n\n")
 
         return "".join(lines)
@@ -124,6 +123,7 @@ def build_odds_message():
         return "❌ *Erro interno* ao montar dados de odds, tente novamente mais tarde."
 
 # ─── Handlers Telegram ──────────────────────────────────────────────
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Olá! Bot de Odds ativo!\n\n"
@@ -131,7 +131,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/proximos   – Próximos (≦ janela)\n"
         "/tendencias – Tendências de escanteios\n"
         "/odds       – Odds de gols & escanteios\n"
-        "/config     – Ver/ajustar configurações\n"
+        "/liga       – Gerenciar filtro de ligas\n"
+        "/config     – Ver/ajustar config geral\n"
         "/ajuda      – Esta ajuda"
     )
 
@@ -159,7 +160,6 @@ async def tendencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(update.effective_chat.id, text, parse_mode="Markdown")
 
 async def odds_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received /odds")
     msg = build_odds_message()
     await context.bot.send_message(update.effective_chat.id, msg, parse_mode="Markdown")
 
@@ -168,24 +168,20 @@ async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         status = (
             f"• Janela (h): {config['window_hours']}\n"
-            f"• Auto-enviar: {'on' if config['auto_enabled'] else 'off'}"
+            f"• Auto-enviar: {'on' if config['auto_enabled'] else 'off'}\n"
+            f"• Ligas: {config['leagues'] or 'todas'}"
         )
         await update.message.reply_text(f"⚙️ *Config atual:*\n{status}", parse_mode="Markdown")
         return
 
     cmd = args[0].lower()
     if cmd in ("janela","window") and len(args)>1 and args[1].isdigit():
-        h = int(args[1])
-        config["window_hours"] = h
+        h = int(args[1]); config["window_hours"] = h
         await update.message.reply_text(f"⏱️ Janela alterada para {h}h.")
     elif cmd=="auto" and len(args)>1 and args[1].lower() in ("on","off"):
-        flag = args[1].lower()=="on"
-        config["auto_enabled"] = flag
-        if auto_job:
-            auto_job.resume() if flag else auto_job.pause()
-        await update.message.reply_text(
-            f"🔔 Auto-enviar {'ativado' if flag else 'desativado'}."
-        )
+        flag = args[1].lower()=="on"; config["auto_enabled"] = flag
+        if auto_job: auto_job.resume() if flag else auto_job.pause()
+        await update.message.reply_text(f"🔔 Auto-enviar {'ativado' if flag else 'desativado'}.")
     else:
         await update.message.reply_text(
             "❌ Uso:\n"
@@ -193,6 +189,38 @@ async def config_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/config janela <horas>\n"
             "/config auto on/off"
         )
+
+async def liga_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "⚽ *Comando /liga*:\n"
+            "`/liga list` — listar ligas atuais\n"
+            "`/liga add <ID>` — adicionar liga\n"
+            "`/liga remove <ID>` — remover liga\n"
+            "`/liga clear` — limpar filtro (todas)\n",
+            parse_mode="Markdown"
+        )
+        return
+
+    sub = args[0].lower()
+    if sub == "list":
+        text = f"Ligas monitoradas: `{config['leagues'] or 'todas'}`"
+    elif sub == "add" and len(args)>1 and args[1].isdigit():
+        lid = int(args[1])
+        if lid not in config["leagues"]:
+            config["leagues"].append(lid)
+        text = f"✅ Adicionada liga `{lid}`"
+    elif sub == "remove" and len(args)>1 and args[1].isdigit():
+        lid = int(args[1])
+        config["leagues"] = [l for l in config["leagues"] if l!=lid]
+        text = f"🗑️ Removida liga `{lid}`"
+    elif sub == "clear":
+        config["leagues"].clear()
+        text = "🔄 Filtro de ligas limpo (todas agora)"
+    else:
+        text = "❌ Uso inválido. Digite apenas `/liga` para ajuda."
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def auto_odds(context: ContextTypes.DEFAULT_TYPE):
     if not config["auto_enabled"]:
@@ -214,10 +242,12 @@ def main():
         BotCommand("jogos","Jogos ao vivo"),
         BotCommand("proximos","Próximos"),
         BotCommand("tendencias","Tendências escanteios"),
-        BotCommand("odds","Odds de gols & escanteios"),
+        BotCommand("odds","Odds gols & escanteios"),
         BotCommand("config","Ver/ajustar config"),
+        BotCommand("liga","Gerenciar filtro de ligas"),
     ])
 
+    # registra handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ajuda", ajuda))
     app.add_handler(CommandHandler("jogos", jogos))
@@ -225,7 +255,9 @@ def main():
     app.add_handler(CommandHandler("tendencias", tendencias))
     app.add_handler(CommandHandler("odds", odds_cmd))
     app.add_handler(CommandHandler("config", config_cmd))
+    app.add_handler(CommandHandler("liga", liga_cmd))
 
+    # agenda envio automático
     auto_job = app.job_queue.run_repeating(auto_odds, interval=600, first=5)
 
     logger.info("🤖 Bot iniciado e polling…")
