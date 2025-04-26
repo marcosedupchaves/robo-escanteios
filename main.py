@@ -1,13 +1,15 @@
+#!/usr/bin/env python3
+# main.py
 import os
 import re
 import logging
-import asyncio
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+
 from telegram import (
     Update,
     BotCommand,
@@ -21,14 +23,15 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# ─── CONFIGURAÇÃO & LOGGING ───────────────────────────────────────────
+# ─── CONFIGURAÇÃO & LOG ───────────────────────────────────────────────
 load_dotenv()
 API_KEY   = os.getenv("API_FOOTBALL_KEY")
 TOKEN     = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID   = int(os.getenv("CHAT_ID", "0"))
 LOCAL_TZ  = ZoneInfo("America/Sao_Paulo")
 
-logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s",
+                    level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ─── ESTADO GLOBAL ────────────────────────────────────────────────────
@@ -53,17 +56,19 @@ def fetch_fixtures(live: bool=None, date: str=None):
     if date:             params["date"] = date
     if config["leagues"]:
         params["league"] = ",".join(map(str, config["leagues"]))
-    r = requests.get(url,
-                     headers={"x-apisports-key": API_KEY},
-                     params=params,
-                     timeout=10)
-    data = r.json().get("response", [])
+    resp = requests.get(
+        url,
+        headers={"x-apisports-key": API_KEY},
+        params=params,
+        timeout=10
+    )
+    data = resp.json().get("response", [])
     logger.info(f"fetch_fixtures(live={live}, date={date}) → {len(data)} itens")
     return data
 
 def slugify(name: str) -> str:
     s = name.lower()
-    for a,b in [("á","a"),("ã","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ç","c")]:
+    for a,b in [("á","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ç","c")]:
         s = s.replace(a,b)
     s = re.sub(r"[^a-z0-9 ]+", "", s)
     return re.sub(r"\s+", "-", s).strip("-")
@@ -90,11 +95,12 @@ def scrape_sofascore_stats(home: str, away: str, event_id: int):
     return {"corners": corners, "possession": poss}
 
 def load_leagues():
-    now = datetime.now().year
+    year = datetime.now().year
     resp = requests.get(
         "https://v3.football.api-sports.io/leagues",
         headers={"x-apisports-key": API_KEY},
-        params={"season": now}, timeout=10
+        params={"season": year},
+        timeout=10
     ).json().get("response", [])
     global all_leagues
     all_leagues = [(e["league"]["id"], e["league"]["name"]) for e in resp]
@@ -109,7 +115,7 @@ def make_league_keyboard(page:int=0):
         kb.append([InlineKeyboardButton(
             f"{prefix}{name} [{lid}]", callback_data=f"liga_toggle:{page}:{lid}"
         )])
-    nav=[]
+    nav = []
     if page>0:
         nav.append(InlineKeyboardButton("👈 Anterior",callback_data=f"liga_nav:{page-1}"))
     if start+PAGE_SIZE < len(all_leagues):
@@ -157,8 +163,10 @@ async def liga_nav_cb(update, ctx):
 
 async def liga_toggle_cb(update, ctx):
     _,pg,lid = update.callback_query.data.split(":"); lid=int(lid)
-    if lid in config["leagues"]: config["leagues"].remove(lid)
-    else:                        config["leagues"].append(lid)
+    if lid in config["leagues"]:
+        config["leagues"].remove(lid)
+    else:
+        config["leagues"].append(lid)
     await update.callback_query.edit_message_reply_markup(make_league_keyboard(int(pg)))
     await update.callback_query.answer(f"Ligas: {config['leagues'] or 'todas'}")
 
@@ -166,7 +174,7 @@ async def jogos(update, ctx):
     fixtures = fetch_fixtures(live=True)
     if not fixtures:
         return await update.message.reply_text("_Nenhum jogo ao vivo._", parse_mode="Markdown")
-    blocks=[]
+    out=[]
     for j in fixtures:
         fid    = j["fixture"]["id"]
         league = j["league"]["name"]
@@ -178,25 +186,29 @@ async def jogos(update, ctx):
         cor_h,cor_a = st["corners"]
         pos_h,pos_a = st["possession"]
         dt = parse_dt(j["fixture"]["date"]).astimezone(LOCAL_TZ)
-        blocks.append(
+        out.append(
             f"*{league}*\n"
             f"{home} x {away} → {sh}–{sa}\n"
             f"🕒 {dt.strftime('%H:%M')} (SP)\n"
             f"Esc: {cor_h+cor_a} | Pos: {pos_h}%–{pos_a}%\n"
             + "—"*15
         )
-    await update.message.reply_text("\n\n".join(blocks), parse_mode="Markdown")
+    await update.message.reply_text("\n\n".join(out), parse_mode="Markdown")
 
 async def proximos(update, ctx):
     agora  = datetime.now(timezone.utc)
-    limite = agora+timedelta(hours=config["window_hours"])
+    limite = agora + timedelta(hours=config["window_hours"])
     dias   = {agora.date(), limite.date()}
     fx=[]
-    for d in dias: fx+=fetch_fixtures(date=d.isoformat())
-    prox=[j for j in fx if agora<=parse_dt(j["fixture"]["date"])<=limite]
+    for d in dias:
+        fx += fetch_fixtures(date=d.isoformat())
+    prox = [
+        j for j in fx
+        if agora <= parse_dt(j["fixture"]["date"]) <= limite
+    ]
     if not prox:
         return await update.message.reply_text("_Nenhum próximo._", parse_mode="Markdown")
-    txt="\n".join(
+    txt = "\n".join(
         f"🕒 {parse_dt(j['fixture']['date']).astimezone(LOCAL_TZ).strftime('%H:%M')} – "
         f"{j['teams']['home']['name']} x {j['teams']['away']['name']}"
         for j in prox
@@ -210,8 +222,7 @@ async def tendencias(update, ctx):
     await update.message.reply_text(txt, parse_mode="Markdown")
 
 async def odds_cmd(update, ctx):
-    # aqui você pode chamar sua build_odds_message()
-    await update.message.reply_text("_Odds a implementar_", parse_mode="Markdown")
+    await update.message.reply_text("_Odds a implementar…_", parse_mode="Markdown")
 
 async def config_cmd(update, ctx):
     if not ctx.args:
@@ -223,44 +234,35 @@ async def config_cmd(update, ctx):
         return await update.message.reply_text(f"⚙️ Config:\n{txt}", parse_mode="Markdown")
     c = ctx.args[0].lower()
     if c=="janela" and len(ctx.args)>1 and ctx.args[1].isdigit():
-        config["window_hours"]=int(ctx.args[1])
+        config["window_hours"] = int(ctx.args[1])
         await update.message.reply_text(f"Janela: {ctx.args[1]}h")
     elif c=="auto" and len(ctx.args)>1 and ctx.args[1].lower() in ("on","off"):
-        flag=ctx.args[1].lower()=="on"
-        config["auto_enabled"]=flag
+        flag = ctx.args[1].lower()=="on"
+        config["auto_enabled"] = flag
         await update.message.reply_text(f"Auto {'ativado' if flag else 'desativado'}")
     else:
         await update.message.reply_text("Uso: /config [janela <h> | auto on/off]")
 
-# ─── SCHEDULER COM asyncio ────────────────────────────────────────────
-async def periodic_sender(app):
-    # espera um pouco pra garantir polling ativo
-    await asyncio.sleep(5)
-    while True:
-        if config["auto_enabled"]:
-            # gere sua mensagem de odds aqui
-            # msg = build_odds_message()
-            await app.bot.send_message(CHAT_ID, "_Odds automáticas…_", parse_mode="Markdown")
-        await asyncio.sleep(600)
-
-# ─── BOOT & POLLING ───────────────────────────────────────────────────
-async def main():
+# ─── BOOT & POLLING ──────────────────────────────────────────────
+def main():
     load_leagues()
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .post_init(lambda x: x.bot.set_my_commands([
+            BotCommand("start","Iniciar"),
+            BotCommand("ajuda","Ajuda"),
+            BotCommand("liga","Filtrar ligas"),
+            BotCommand("jogos","Ao vivo"),
+            BotCommand("proximos","Próximos"),
+            BotCommand("tendencias","Tendências"),
+            BotCommand("odds","Odds"),
+            BotCommand("config","Config"),
+        ]))
+        .build()
+    )
 
-    # registra comandos do Telegram
-    await app.bot.set_my_commands([
-        BotCommand("start","Iniciar"),
-        BotCommand("ajuda","Ajuda"),
-        BotCommand("liga","Filtrar ligas"),
-        BotCommand("jogos","Ao vivo"),
-        BotCommand("proximos","Próximos"),
-        BotCommand("tendencias","Tendências"),
-        BotCommand("odds","Odds"),
-        BotCommand("config","Config"),
-    ])
-
-    # handlers
+    # registra handlers
     app.add_handler(CommandHandler("start",    start))
     app.add_handler(CommandHandler("ajuda",    ajuda))
     app.add_handler(CommandHandler("liga",     liga_cmd))
@@ -272,12 +274,8 @@ async def main():
     app.add_handler(CommandHandler("odds",     odds_cmd))
     app.add_handler(CommandHandler("config",   config_cmd))
 
-    logger.info("🤖 Bot iniciado e entrando em polling + scheduler…")
-    # executa polling e scheduler em paralelo
-    await asyncio.gather(
-        app.run_polling(poll_interval=3),
-        periodic_sender(app)
-    )
+    logger.info("🤖 Bot iniciado e polling...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
