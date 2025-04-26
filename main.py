@@ -1,5 +1,21 @@
 import os
 import logging
+# (certifique-se de já ter logger configurado lá em cima)
+
+async def automatic_odds(context: CallbackContext):
+    try:
+        logging.info("🚀 Executando job automatic_odds")
+        msg = get_odds()
+        await context.bot.send_message(
+            chat_id=CHAT_ID,
+            text=msg,
+            parse_mode="Markdown"
+        )
+        logging.info("✅ automatic_odds enviado com sucesso")
+    except Exception as e:
+        # loga stacktrace completo para você depurar
+        logging.error("❌ automatic_odds falhou", exc_info=True)
+        
 from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
